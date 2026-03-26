@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PH Health Admin System - Global View</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #f4f7f6; }
+        #login-container {
+            display: flex; align-items: center; justify-content: center; height: 100vh;
+            background: linear-gradient(135deg, #28a745, #1e7e34);
+        }
+        .login-box {
+            background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); 
+            width: 320px; text-align: center;
+        }
+        #admin-dashboard { display: none; height: 100vh; flex-direction: row; }
+        #sidebar {
+            width: 350px; background: white; padding: 25px; box-shadow: 4px 0 10px rgba(0,0,0,0.1); 
+            z-index: 1000; overflow-y: auto;
+        }
+        #map { flex-grow: 1; height: 100vh; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; font-size: 14px; }
+        input, select { 
+            width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; 
+            box-sizing: border-box; font-size: 14px;
+        }
+        input[readonly] { background: #f1f1f1; color: #555; font-weight: bold; }
+        button { 
+            width: 100%; padding: 12px; background: #28a745; color: white; border: none; 
+            border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; margin-top: 10px;
+        }
+        button:hover { background: #218838; }
+        .logout-btn { background: #dc3545; }
+        #error-msg { color: #d9534f; font-size: 13px; display: none; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="login-container">
+        <div class="login-box">
+            <h2 style="margin-top:0;">Admin Access</h2>
+            <div class="form-group">
+                <input type="text" id="username" placeholder="Username (Admin)">
+            </div>
+            <div class="form-group">
+                <input type="password" id="password" placeholder="Password (1234)">
+            </div>
+            <button onclick="checkLogin()">Login</button>
+            <p id="error-msg">Maling username o password!</p>
+        </div>
+    </div>
+
+    <div id="admin-dashboard">
+        <div id="sidebar">
+            <h2 style="margin-top:0; color:#28a745;">Health Registry</h2>
+            <p style="font-size:12px; color:#777;">Nakikita mo ang buong Pilipinas. Ang iyong kasalukuyang lokasyon ay kusa pa ring ilalagay sa form sa ibaba.</p>
+            <hr>
+            
+            <div class="form-group">
+                <label>Pangalan ng Pasyente</label>
+                <input type="text" id="patientName" placeholder="Hal: Juan Dela Cruz">
+            </div>
+
+            <div class="form-group">
+                <label>Sakit / Karamdaman</label>
+                <input type="text" id="patientDisease" placeholder="Hal: Dengue / Flu">
+            </div>
+
+            <div class="form-group">
+                <label>Status</label>
+                <select id="status">
+                    <option value="Critical">🔴 Critical (High Risk)</option>
+                    <option value="Moderate">🟡 Moderate (Stable)</option>
+                    <option value="Stable">🟢 Stable (Recovering)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Taga-saan (Auto-Detect)</label>
+                <input type="text" id="patientLocation" placeholder="Waiting for GPS..." readonly>
+            </div>
+
+            <div class="form-group">
+                <label>Coordinates</label>
+                <input type="text" id="coords" placeholder="0.0000, 0.0000" readonly>
+            </div>
+            
+            <button onclick="addPatientToMap()">I-dagdag sa Mapa</button>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+
+        <div id="map"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        function checkLogin() {
+            var user = document.getElementById('username').value;
+            var pass = document.getElementById('password').value;
+
+            if(user === "Admin" && pass === "1234") {
+                document.getElementById('login-container').style.display = 'none';
+                document.getElementById('admin-dashboard').style.display = 'flex';
+                
+                initMap();
+                autoDetectLocation(); // Kukunin ang address mo pero hindi ilalapit ang mapa
+                
+                setTimeout(() => { map.invalidateSize(); }, 200);
+            } else {
+                document.getElementById('error-msg').style.display = 'block';
+            }
+        }
+
+        function logout() { location.reload(); }
+
+        var map;
+        var selectedCoords = null;
+
+        function initMap() {
+            if (map) return;
+
+            // NAKA-SET SA BUONG PILIPINAS (Zoom level 6 para malayo ang tingin)
+            map = L.map('map', {
+                center: [12.8797, 121.7740], 
+                zoom: 6, 
+                minZoom: 5,
+                maxBounds: [[4.0, 114.0], [21.0, 127.0]]
+            });
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap'
+            }).addTo(map);
+
+            map.on('click', function(e) {
+                updateLocationInfo(e.latlng.lat, e.latlng.lng);
+            });
+        }
+
+        function autoDetectLocation() {
+            if ("geolocation" in navigator) {
+                document.getElementById('patientLocation').value = "Detecting your location...";
+                
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    var lat = position.coords.latitude;
+                    var lng = position.coords.longitude;
+                    
+                    // HUWAG gagamit ng map.setView rito para hindi mag-zoom sa location mo lang
+                    updateLocationInfo(lat, lng);
+                    
+                }, function(error) {
+                    document.getElementById('patientLocation').value = "GPS Access Denied";
+                });
+            }
+        }
+
+        function updateLocationInfo(lat, lng) {
+            selectedCoords = {lat: lat, lng: lng};
+            document.getElementById('coords').value = lat.toFixed(4) + ", " + lng.toFixed(4);
+            document.getElementById('patientLocation').value = "Fetching address...";
+            
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.address) {
+                        var area = data.address.city || data.address.town || data.address.village || "Unknown";
+                        var sub = data.address.suburb || data.address.neighbourhood || "";
+                        document.getElementById('patientLocation').value = (sub ? sub + ", " : "") + area;
+                    }
+                })
+                .catch(err => { document.getElementById('patientLocation').value = "API Error"; });
+        }
+
+        function addPatientToMap() {
+            var name = document.getElementById('patientName').value;
+            var locName = document.getElementById('patientLocation').value;
+            var disease = document.getElementById('patientDisease').value;
+            var status = document.getElementById('status').value;
+
+            if (!selectedCoords || !name || !disease) {
+                alert("Punan ang lahat!");
+                return;
+            }
+
+            var colors = { "Critical": "red", "Moderate": "orange", "Stable": "green" };
+            var activeColor = colors[status];
+
+            L.circleMarker(selectedCoords, {
+                radius: 12, fillColor: activeColor, color: "white", weight: 2, opacity: 1, fillOpacity: 0.9
+            }).addTo(map).bindPopup(`
+                <strong>${name}</strong><br>
+                📍 ${locName}<br>
+                ⚠️ ${disease}<br>
+                📊 <b style="color:${activeColor}">${status}</b>
+            `).openPopup();
+
+            document.getElementById('patientName').value = "";
+            document.getElementById('patientDisease').value = "";
+        }
+    </script>
+</body>
+</html>
