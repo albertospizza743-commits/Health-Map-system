@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Health Map - Street View Detail</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: 'Poppins', sans-serif; background: #f4f7f6; }
+        
+        #login-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: linear-gradient(rgba(18, 41, 33, 0.4), rgba(18, 41, 33, 0.5)),
+                        url('76bb4186-4e09-48d3-99f9-735fdf91d4e3.jpg') no-repeat center center;
+            background-size: cover;
+            position: absolute;
+            width: 100%;
+            z-index: 2000;
+        }
+
+        .login-box {
+            background: rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            padding: 50px 40px;
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            width: 350px;
+            text-align: center;
+        }
+
+        .login-box h2 {
+            color: #ffffff;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 30px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            margin-top: 0;
+            margin-bottom: 30px;
+            text-transform: uppercase;
+            text-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        #admin-dashboard { display: none; height: 100vh; width: 100vw; flex-direction: row; }
+        #sidebar { width: 380px; min-width: 380px; background: white; padding: 20px; box-shadow: 4px 0 10px rgba(0,0,0,0.1); z-index: 1000; overflow-y: auto; height: 100%; box-sizing: border-box; }
+        #map { flex-grow: 1; height: 100%; width: 100%; background: #e5e3df; }
+        
+        .login-box input {
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: none;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.95);
+            box-sizing: border-box;
+            font-size: 15px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 15px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 17px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+        }
+
+        input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; margin-bottom: 5px; }
+        label { font-size: 12px; font-weight: 600; color: #666; }
+        button { width: 100%; padding: 12px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; margin-top: 5px; }
+        
+        .print-btn { background: #007bff; margin-top: 10px; }
+        .logout-btn { background: #dc3545; margin-top: 15px; padding: 8px; font-size: 14px; }
+        
+        .loading-overlay { display: none; font-size: 12px; color: #28a745; margin-top: 5px; font-weight: bold; text-align: center; }
+        
+        .db-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px; }
+        .db-table th { background: #f8f9fa; color: #333; }
+        .db-table th, .db-table td { border: 1px solid #eee; padding: 8px; text-align: left; }
+    </style>
+</head>
+<body>
+
+    <div id="login-container">
+        <div class="login-box">
+            <h2>Admin Access</h2>
+            <input type="text" id="username" placeholder="Username">
+            <input type="password" id="password" placeholder="Password">
+            <button class="login-btn" onclick="checkLogin()">Sign In</button>
+        </div>
+    </div>
+
+    <div id="admin-dashboard">
+        <div id="sidebar">
+            <h2 style="color:#28a745; margin-top:0; font-size: 22px;">Health Registry</h2>
+            <hr>
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="patientName" placeholder="Enter patient name">
+            </div>
+            
+            <div class="form-row" style="display: flex; gap: 10px; margin-bottom: 12px;">
+                <div style="flex: 1;">
+                    <label>Age</label>
+                    <input type="number" id="patientAge" placeholder="0">
+                </div>
+                <div style="flex: 1;">
+                    <label>Gender</label>
+                    <select id="patientGender">
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Civil Status</label>
+                <select id="civilStatus">
+                    <option value="Single">Single</option>
+                    <option value="Married">Married</option>
+                    <option value="Widowed">Widowed</option>
+                    <option value="Divorced">Divorced</option>
+                    <option value="Lived-in">Lived-in</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Disease/Illness</label>
+                <input type="text" id="patientDisease" placeholder="Enter illness">
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>Health Status</label>
+                <select id="status">
+                    <option value="Critical">🔴 Critical</option>
+                    <option value="Moderate">🟡 Moderate</option>
+                    <option value="Stable">🟢 Stable</option>
+                </select>
+            </div>
+
+            <div style="background: #f9f9f9; padding: 15px; border-radius: 12px; border: 1px solid #eee;">
+                <label style="color: #28a745; font-weight: bold; font-size: 11px;">LOCATION DETAILS</label>
+                <input type="text" id="patientStreet" placeholder="Street / Barangay" style="margin-top: 5px;">
+                <input type="text" id="patientLocation" placeholder="City / Municipality" style="margin-top: 5px;">
+                <div id="loading" class="loading-overlay">🔍 Searching address...</div>
+            </div>
+            <button id="addBtn" style="margin-top: 15px;" onclick="processAndAdd()">Add to Map</button>
+
+            <div class="db-section" style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+                <h3 style="font-size: 15px; margin-bottom: 10px;">📋 Patient Records</h3>
+                <input type="text" id="dbSearch" placeholder="Search records..." onkeyup="filterDatabase()" style="margin-bottom: 10px;">
+                <button class="print-btn" onclick="printDatabase()">🖨️ Print Records</button>
+                <table class="db-table" id="dbTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Age</th>
+                            <th>Status</th>
+                            <th>Illness</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="patientListBody"></tbody>
+                </table>
+            </div>
+
+            <button class="logout-btn" onclick="location.reload()">Logout</button>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        var map;
+        var markers = [];
+        var patientRecords = JSON.parse(localStorage.getItem('patientDB')) || [];
+
+        function checkLogin() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            if(u === "Admin" && p === "1234") {
+                document.getElementById('login-container').style.display = 'none';
+                document.getElementById('admin-dashboard').style.display = 'flex';
+                initMap();
+                loadStoredPatients();
+            } else { alert("Access Denied"); }
+        }
+
+        function initMap() {
+            if (map) return;
+            var googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+                maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3'], attribution: 'Google Maps'
+            });
+            map = L.map('map', { center: [12.0676, 124.5946], zoom: 15, layers: [googleHybrid] });
+            setTimeout(() => { map.invalidateSize(); }, 500);
+        }
+
+        function loadStoredPatients() {
+            const body = document.getElementById('patientListBody');
+            body.innerHTML = "";
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            
+            patientRecords.forEach((p, index) => {
+                const marker = addMarker(p);
+                markers.push(marker);
+                const row = body.insertRow();
+                const statusIcon = p.status === "Critical" ? "🔴" : (p.status === "Moderate" ? "🟡" : "🟢");
+                
+                row.innerHTML = `
+                    <td><b>${p.name}</b></td>
+                    <td>${p.age} y/o</td>
+                    <td>${statusIcon} ${p.status}</td>
+                    <td>${p.disease}</td>
+                    <td><button style="padding: 2px 5px; font-size: 10px; background: #ff4d4d; width: auto;" onclick="deletePatient(${index})">Del</button></td>
+                `;
+            });
+        }
+
+        function addMarker(p) {
+            const colors = { "Critical": "red", "Moderate": "orange", "Stable": "green" };
+            return L.circleMarker(p.coords, {
+                radius: 10, fillColor: colors[p.status], color: "white", weight: 2, fillOpacity: 0.8
+            }).addTo(map).bindPopup(`
+                <div style="font-family: Poppins, sans-serif;">
+                    <b style="font-size: 14px;">${p.name}</b><br>
+                    <hr>
+                    <b>Age:</b> ${p.age}<br>
+                    <b>Gender:</b> ${p.gender}<br>
+                    <b>Illness:</b> <span style="color:red;">${p.disease}</span><br>
+                    <b>Status:</b> ${p.status}
+                </div>
+            `);
+        }
+
+        async function processAndAdd() {
+            const data = {
+                name: document.getElementById('patientName').value,
+                age: document.getElementById('patientAge').value,
+                gender: document.getElementById('patientGender').value,
+                civilStatus: document.getElementById('civilStatus').value,
+                disease: document.getElementById('patientDisease').value,
+                street: document.getElementById('patientStreet').value,
+                city: document.getElementById('patientLocation').value,
+                status: document.getElementById('status').value
+            };
+
+            if (!data.name || !data.city || !data.age) {
+                alert("Please fill in the required fields (Name, Age, and Location).");
+                return;
+            }
+
+            document.getElementById('loading').style.display = "block";
+            try {
+                const query = `${data.street}, ${data.city}, Philippines`;
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+                const result = await res.json();
+
+                if (result.length > 0) {
+                    data.coords = [result[0].lat, result[0].lon];
+                    patientRecords.push(data);
+                    localStorage.setItem('patientDB', JSON.stringify(patientRecords));
+                    loadStoredPatients();
+                    map.flyTo(data.coords, 17);
+                    
+                    document.getElementById('patientName').value = "";
+                    document.getElementById('patientAge').value = "";
+                    document.getElementById('patientDisease').value = "";
+                    document.getElementById('patientStreet').value = "";
+                    document.getElementById('patientLocation').value = "";
+                } else {
+                    alert("Address not found.");
+                }
+            } catch (e) { alert("Error connecting to search service."); }
+            document.getElementById('loading').style.display = "none";
+        }
+
+        function deletePatient(index) {
+            if(confirm("Are you sure?")) {
+                patientRecords.splice(index, 1);
+                localStorage.setItem('patientDB', JSON.stringify(patientRecords));
+                loadStoredPatients();
+            }
+        }
+
+        function filterDatabase() {
+            const input = document.getElementById('dbSearch').value.toLowerCase();
+            const tr = document.getElementById('dbTable').getElementsByTagName('tr');
+            for (let i = 1; i < tr.length; i++) {
+                tr[i].style.display = tr[i].innerText.toLowerCase().includes(input) ? "" : "none";
+            }
+        }
+
+        function printDatabase() {
+            if (patientRecords.length === 0) {
+                alert("No data available to print.");
+                return;
+            }
+
+            let printWindow = window.open('', '_blank');
+            let content = `
+                <html>
+                <head>
+                    <title>Health Registry Report</title>
+                    <style>
+                        body { font-family: sans-serif; padding: 40px; }
+                        h2 { color: #28a745; text-align: center; margin-bottom: 30px; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+                        th { background-color: #f2f2f2; }
+                        .date { text-align: right; font-size: 12px; margin-bottom: 20px; }
+                        
+                        .signature-section {
+                            margin-top: 60px;
+                            display: flex;
+                            justify-content: flex-end;
+                        }
+                        .sig-box {
+                            text-align: center;
+                            width: 280px;
+                        }
+                        .sig-name {
+                            font-weight: bold;
+                            font-size: 16px;
+                            margin-bottom: 0;
+                        }
+                        .sig-line {
+                            border-top: 2px solid #000;
+                            margin: 5px 0;
+                        }
+                        .sig-title {
+                            font-size: 14px;
+                            color: #333;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <h2>HEALTH REGISTRY PATIENT REPORT</h2>
+                    <div class="date">Report Generated: ${new Date().toLocaleString()}</div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Age</th>
+                                <th>Gender</th>
+                                <th>Illness</th>
+                                <th>Status</th>
+                                <th>Address</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            patientRecords.forEach(p => {
+                content += `
+                    <tr>
+                        <td>${p.name}</td>
+                        <td>${p.age}</td>
+                        <td>${p.gender}</td>
+                        <td>${p.disease}</td>
+                        <td>${p.status}</td>
+                        <td>${p.street}, ${p.city}</td>
+                    </tr>
+                `;
+            });
+
+            content += `
+                        </tbody>
+                    </table>
+
+                    <div class="signature-section">
+                        <div class="sig-box">
+                            <div class="sig-name">Chin Angela B. Dealagdon</div>
+                            <div class="sig-line"></div>
+                            <div class="sig-title">Nurse Assistant</div>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `;
+
+            printWindow.document.write(content);
+            printWindow.document.close();
+            setTimeout(() => { printWindow.print(); }, 500);
+        }
+    </script>
+</body>
+</html>
